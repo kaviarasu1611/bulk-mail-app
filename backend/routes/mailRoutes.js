@@ -1,17 +1,22 @@
 require("dotenv").config();
-const nodemailer = require("nodemailer");
 
+const nodemailer = require("nodemailer");
 const express = require("express");
 const Mail = require("../models/Mail");
 
 const router = express.Router();
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 30000
 });
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -19,12 +24,28 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 router.post("/send", async (req, res) => {
   const { subject, body, recipients } = req.body;
 
-  if (!subject?.trim() || !body?.trim() || !Array.isArray(recipients) || !recipients.length) {
-    return res.status(400).json({ message: "Subject, body and at least one recipient are required." });
+  if (
+    !subject?.trim() ||
+    !body?.trim() ||
+    !Array.isArray(recipients) ||
+    !recipients.length
+  ) {
+    return res.status(400).json({
+      message: "Subject, body and at least one recipient are required."
+    });
   }
 
-  const cleanRecipients = [...new Set(recipients.map(e => String(e).trim().toLowerCase()).filter(Boolean))];
-  const invalidEmails = cleanRecipients.filter(e => !emailRegex.test(e));
+  const cleanRecipients = [
+    ...new Set(
+      recipients
+        .map(e => String(e).trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ];
+
+  const invalidEmails = cleanRecipients.filter(
+    e => !emailRegex.test(e)
+  );
 
   if (invalidEmails.length) {
     return res.status(400).json({
@@ -47,9 +68,12 @@ router.post("/send", async (req, res) => {
       status: "Sent"
     });
 
-    res.status(200).json({ message: "Email sent successfully.", record });
+    res.status(200).json({
+      message: "Email sent successfully.",
+      record
+    });
   } catch (error) {
-    console.error("Mail error:", error.message);
+    console.error("Mail error:", error);
 
     await Mail.create({
       subject: subject.trim(),
@@ -59,17 +83,25 @@ router.post("/send", async (req, res) => {
       error: error.message
     });
 
-    res.status(500).json({ message: "Failed to send email. Check SMTP settings." });
+    res.status(500).json({
+      message: `Failed to send email: ${error.message}`
+    });
   }
 });
 
 router.get("/history", async (req, res) => {
   try {
-    const mails = await Mail.find().sort({ createdAt: -1 }).limit(50);
+    const mails = await Mail.find()
+      .sort({ createdAt: -1 })
+      .limit(50);
+
     res.json(mails);
   } catch (error) {
     console.error("History error:", error.message);
-    res.status(500).json({ message: "Failed to fetch email history." });
+
+    res.status(500).json({
+      message: "Failed to fetch email history."
+    });
   }
 });
 
